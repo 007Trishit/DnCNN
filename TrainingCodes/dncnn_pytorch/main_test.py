@@ -163,7 +163,7 @@ if __name__ == '__main__':
                 print('%10s : %10s : %2.4f second' % (set_cur, im, elapsed_time))
 
                 psnr_x_ = compare_psnr(x, x_)
-                ssim_x_ = compare_ssim(x, x_, data_range=255, gaussian_weights=True)
+                ssim_x_ = compare_ssim(x, x_, data_range=1.0, gaussian_weights=True)
                 if args.save_result:
                     name, ext = os.path.splitext(im)
                     show(np.hstack((y, x_)))  # show the image
