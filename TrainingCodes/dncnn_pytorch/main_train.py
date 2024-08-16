@@ -48,6 +48,8 @@ parser.add_argument('--train_data', default='data/Train400', type=str, help='pat
 parser.add_argument('--sigma', default=25, type=int, help='noise level')
 parser.add_argument('--epoch', default=180, type=int, help='number of train epoches')
 parser.add_argument('--lr', default=1e-3, type=float, help='initial learning rate for Adam')
+parser.add_argument('--gpu_id', default=0, type=int, help='gpu id')
+
 args = parser.parse_args()
 
 batch_size = args.batch_size
@@ -72,7 +74,8 @@ class DnCNN(nn.Module):
         layers.append(nn.ReLU(inplace=True))
         for _ in range(depth-2):
             layers.append(nn.Conv2d(in_channels=n_channels, out_channels=n_channels, kernel_size=kernel_size, padding=padding, bias=False))
-            layers.append(nn.BatchNorm2d(n_channels, eps=0.0001, momentum = 0.95))
+            if use_bnorm:
+                layers.append(nn.BatchNorm2d(n_channels, eps=0.0001, momentum = 0.95))
             layers.append(nn.ReLU(inplace=True))
         layers.append(nn.Conv2d(in_channels=n_channels, out_channels=image_channels, kernel_size=kernel_size, padding=padding, bias=False))
         self.dncnn = nn.Sequential(*layers)
@@ -129,6 +132,7 @@ if __name__ == '__main__':
     # model selection
     print('===> Building model')
     model = DnCNN()
+    device = f"cuda:{args.gpu_id}"
     
     initial_epoch = findLastCheckpoint(save_dir=save_dir)  # load the last model in matconvnet style
     if initial_epoch > 0:
@@ -139,15 +143,14 @@ if __name__ == '__main__':
     # criterion = nn.MSELoss(reduction = 'sum')  # PyTorch 0.4.1
     criterion = sum_squared_error()
     if cuda:
-        model = model.cuda()
+        model = model.to(device)
          # device_ids = [0]
-         # model = nn.DataParallel(model, device_ids=device_ids).cuda()
-         # criterion = criterion.cuda()
+         # model = nn.DataParallel(model, device_ids=device_ids).to(device)
+         # criterion = criterion.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = MultiStepLR(optimizer, milestones=[30, 60, 90], gamma=0.2)  # learning rates
     for epoch in range(initial_epoch, n_epoch):
 
-        scheduler.step(epoch)  # step to the learning rate in this epcoh
         xs = dg.datagenerator(data_dir=args.train_data)
         xs = xs.astype('float32')/255.0
         xs = torch.from_numpy(xs.transpose((0, 3, 1, 2)))  # tensor of the clean patches, NXCXHXW
@@ -159,13 +162,15 @@ if __name__ == '__main__':
         for n_count, batch_yx in enumerate(DLoader):
                 optimizer.zero_grad()
                 if cuda:
-                    batch_x, batch_y = batch_yx[1].cuda(), batch_yx[0].cuda()
+                    batch_x, batch_y = batch_yx[1].to(device), batch_yx[0].to(device)
                 loss = criterion(model(batch_y), batch_x)
                 epoch_loss += loss.item()
                 loss.backward()
                 optimizer.step()
                 if n_count % 10 == 0:
                     print('%4d %4d / %4d loss = %2.4f' % (epoch+1, n_count, xs.size(0)//batch_size, loss.item()/batch_size))
+        scheduler.step()  # step to the learning rate in this epcoh
+        
         elapsed_time = time.time() - start_time
 
         log('epcoh = %4d , loss = %4.4f , time = %4.2f s' % (epoch+1, epoch_loss/n_count, elapsed_time))

@@ -25,19 +25,21 @@ import numpy as np
 import torch.nn as nn
 import torch.nn.init as init
 import torch
-from skimage.measure import compare_psnr, compare_ssim
+from skimage.metrics import peak_signal_noise_ratio as compare_psnr
+from skimage.metrics import structural_similarity as compare_ssim
 from skimage.io import imread, imsave
 
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--set_dir', default='data/Test', type=str, help='directory of test dataset')
+    parser.add_argument('--set_dir', default='data', type=str, help='directory of test dataset')
     parser.add_argument('--set_names', default=['Set68', 'Set12'], help='directory of test dataset')
     parser.add_argument('--sigma', default=25, type=int, help='noise level')
     parser.add_argument('--model_dir', default=os.path.join('models', 'DnCNN_sigma25'), help='directory of the model')
-    parser.add_argument('--model_name', default='model_001.pth', type=str, help='the model name')
+    parser.add_argument('--model_name', default='model_180.pth', type=str, help='the model name')
     parser.add_argument('--result_dir', default='results', type=str, help='directory of test dataset')
     parser.add_argument('--save_result', default=0, type=int, help='save the denoised image, 1 or 0')
+    parser.add_argument('--gpu_id', default=0, type=int, help='gpu id')
     return parser.parse_args()
 
 
@@ -102,6 +104,7 @@ class DnCNN(nn.Module):
 if __name__ == '__main__':
 
     args = parse_args()
+    device = f"cuda:{args.gpu_id}"
 
     # model = DnCNN()
     if not os.path.exists(os.path.join(args.model_dir, args.model_name)):
@@ -127,7 +130,7 @@ if __name__ == '__main__':
 #    model.train()
 
     if torch.cuda.is_available():
-        model = model.cuda()
+        model = model.to(device)
 
     if not os.path.exists(args.result_dir):
         os.mkdir(args.result_dir)
@@ -150,7 +153,7 @@ if __name__ == '__main__':
 
                 torch.cuda.synchronize()
                 start_time = time.time()
-                y_ = y_.cuda()
+                y_ = y_.to(device)
                 x_ = model(y_)  # inference
                 x_ = x_.view(y.shape[0], y.shape[1])
                 x_ = x_.cpu()
@@ -160,7 +163,7 @@ if __name__ == '__main__':
                 print('%10s : %10s : %2.4f second' % (set_cur, im, elapsed_time))
 
                 psnr_x_ = compare_psnr(x, x_)
-                ssim_x_ = compare_ssim(x, x_)
+                ssim_x_ = compare_ssim(x, x_, data_range=255, gaussian_weights=True)
                 if args.save_result:
                     name, ext = os.path.splitext(im)
                     show(np.hstack((y, x_)))  # show the image

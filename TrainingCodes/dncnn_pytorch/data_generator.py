@@ -22,6 +22,7 @@
 import glob
 import cv2
 import numpy as np
+import os
 # from multiprocessing import Pool
 from torch.utils.data import Dataset
 import torch
@@ -102,22 +103,34 @@ def gen_patches(file_name):
     return patches
 
 
-def datagenerator(data_dir='data/Train400', verbose=False):
+def datagenerator(data_dir='/data/train/', batch_size=128, verbose=False):
     # generate clean patches from a dataset
-    file_list = glob.glob(data_dir+'/*.png')  # get name list of all .png files
     # initrialize
+    curr_dir = os.getcwd()
+    # Create the full path to the data directory
+    data_dir = os.path.join(curr_dir, 'data', 'train')
+    file_list = glob.glob(data_dir+'/*.png')  # get name list of all .png files
+    # print(len(file_list))
     data = []
-    # generate patches
-    for i in range(len(file_list)):
-        patches = gen_patches(file_list[i])
-        for patch in patches:    
-            data.append(patch)
+
+    for i, file_name in enumerate(file_list):
+        patches = gen_patches(file_name)
+        data.extend(patches)
+        
         if verbose:
-            print(str(i+1) + '/' + str(len(file_list)) + ' is done ^_^')
+            print(f"{i+1}/{len(file_list)} is done ^_^")
+
+    # Convert the list of patches to a NumPy array
     data = np.array(data, dtype='uint8')
-    data = np.expand_dims(data, axis=3)
-    discard_n = len(data)-len(data)//batch_size*batch_size  # because of batch namalization
-    data = np.delete(data, range(discard_n), axis=0)
+
+    # Calculate how many patches to discard for batch compatibility
+    discard_n = len(data) - len(data) // batch_size * batch_size
+    data = data[:-discard_n]
+
+    # Reshape data if patches have a consistent shape
+    # Adjust this reshape based on your actual patch shapes
+    data = data.reshape((-1, patch_size, patch_size, 1))
+
     print('^_^-training data finished-^_^')
     return data
 
